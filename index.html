@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hantar Kerja Rumah</title>
+<style>
+  :root { --utama:#1f6feb; --latar:#f4f6fb; --kad:#fff; --teks:#1c2330; --kabur:#6b7280; --garis:#d8dde6; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--latar); color:var(--teks); }
+  .kad { max-width:520px; margin:16px auto; background:var(--kad); border-radius:14px; padding:20px 18px 24px; box-shadow:0 2px 10px rgba(0,0,0,.06); }
+  h1 { font-size:22px; margin:0 0 2px; }
+  .kecil { color:var(--kabur); font-size:14px; margin:0 0 16px; }
+  label { display:block; font-weight:600; font-size:15px; margin:14px 0 6px; }
+  select, button, .pilihFail { width:100%; font-size:16px; padding:12px; border-radius:10px; border:1px solid var(--garis); background:#fff; }
+  select:disabled { background:#f1f3f6; color:#9aa1ab; }
+  .info { background:#eef4ff; border-left:4px solid var(--utama); padding:10px 12px; border-radius:8px; font-size:14px; margin-top:10px; white-space:pre-wrap; }
+  .pilihFail { display:block; text-align:center; border:2px dashed var(--utama); color:var(--utama); font-weight:600; cursor:pointer; }
+  input[type=file] { display:none; }
+  #pratonton { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px; }
+  .tb { position:relative; }
+  .tb img { width:100%; aspect-ratio:3/4; object-fit:cover; border-radius:8px; border:1px solid var(--garis); }
+  .tb span { position:absolute; top:4px; left:6px; background:rgba(0,0,0,.6); color:#fff; font-size:12px; padding:1px 6px; border-radius:6px; }
+  .tb button { position:absolute; top:4px; right:4px; width:28px; height:28px; padding:0; border-radius:50%; background:#e11d48; color:#fff; border:none; font-size:16px; line-height:28px; }
+  .utama { background:var(--utama); color:#fff; border:none; font-weight:700; margin-top:20px; }
+  .utama:disabled { opacity:.6; }
+  .ralat { color:#b91c1c; font-size:14px; margin-top:10px; }
+  .hasil { text-align:center; }
+  .hasil .besar { font-size:44px; font-weight:800; color:var(--utama); margin:8px 0; }
+  .lencana { display:inline-block; padding:4px 10px; border-radius:999px; font-size:13px; font-weight:600; }
+  .ok { background:#dcfce7; color:#166534; } .lewat { background:#ffedd5; color:#9a3412; }
+  .komen { text-align:left; background:#f8fafc; border:1px solid var(--garis); border-radius:10px; padding:12px; margin-top:14px; font-size:15px; }
+  .putar { width:38px; height:38px; border:4px solid #dbe4ff; border-top-color:var(--utama); border-radius:50%; animation:p 1s linear infinite; margin:18px auto; }
+  @keyframes p { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="kad">
+  <h1>📘 Hantar Kerja Rumah</h1>
+  <p class="kecil" id="namaGuru"></p>
+
+  <div id="muat"><div class="putar"></div><p class="kecil" style="text-align:center">Memuatkan…</p></div>
+
+  <form id="borang" hidden>
+    <label for="kelas">1. Kelas</label>
+    <select id="kelas" required></select>
+
+    <label for="nama">2. Nama</label>
+    <select id="nama" required disabled></select>
+
+    <label for="tugasan">3. Tugasan</label>
+    <select id="tugasan" required disabled></select>
+    <div id="infoTugasan" class="info" hidden></div>
+
+    <label>4. Gambar kerja <span class="kecil">(maks <span id="maks"></span> gambar, ikut turutan muka surat)</span></label>
+    <label class="pilihFail" for="fail">📷 Ambil / pilih gambar</label>
+    <input type="file" id="fail" accept="image/*" multiple>
+    <div id="pratonton"></div>
+
+    <div id="ralat" class="ralat"></div>
+    <button id="btn" class="utama" type="submit">Hantar</button>
+  </form>
+
+  <div id="proses" hidden>
+    <div class="putar"></div>
+    <p style="text-align:center">Sedang menghantar &amp; menyemak…<br><span class="kecil">Biasanya 20–60 saat. Jangan tutup halaman ini.</span></p>
+  </div>
+
+  <div id="hasil" class="hasil" hidden></div>
+</div>
+
+<script>
+  /* =====================================================================
+   *  TAMPAL URL WEB APP ANDA DI BAWAH (Deploy → Manage deployments → Web app URL,
+   *  berakhir dengan /exec). Web app mesti: Execute as = Me, Who has access = Anyone.
+   * ===================================================================== */
+  var API_URL = 'https://script.google.com/macros/s/AKfycbyZOKLh03fhOv7YneaD6E4X1s69UrA21FJMMqyxPaWBygfxaq2ywZHjKjv0i_vpPcxpFQ/exec';
+
+  /** Hantar permintaan ke Apps Script tanpa kuki Google (elak masalah berbilang akaun). */
+  function panggil(action, data) {
+    return fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: action, data: data }),
+      redirect: 'follow',
+      credentials: 'omit'
+    }).then(function (r) {
+      if (!r.ok) throw new Error('Pelayan memberi ralat ' + r.status);
+      return r.text();
+    }).then(function (t) {
+      var j;
+      try { j = JSON.parse(t); } catch (e) { throw new Error('Jawapan pelayan tidak sah. Semak API_URL & tetapan deploy (Anyone).'); }
+      if (!j.ok) throw new Error(j.ralat || 'Ralat tidak diketahui');
+      return j.hasil;
+    });
+  }
+
+  var DATA = null, GAMBAR = [];
+  var $ = function (id) { return document.getElementById(id); };
+
+  function simpan(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function baca(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+
+  function isiPilihan(sel, senarai, teksKosong) {
+    sel.innerHTML = '';
+    var o = document.createElement('option'); o.value = ''; o.textContent = teksKosong; sel.appendChild(o);
+    senarai.forEach(function (x) {
+      var op = document.createElement('option');
+      op.value = x.value; op.textContent = x.label; sel.appendChild(op);
+    });
+  }
+
+  if (API_URL.indexOf('/exec') < 0) {
+    $('muat').innerHTML = '<p class="ralat">API_URL belum diisi. Buka fail index.html dan tampal URL Web App (berakhir /exec).</p>';
+  } else {
+    panggil('data').then(mula).catch(function (e) {
+      $('muat').innerHTML = '';
+      var p = document.createElement('p'); p.className = 'ralat';
+      p.textContent = 'Gagal memuatkan: ' + e.message + ' (semak sambungan internet & cuba muat semula)';
+      $('muat').appendChild(p);
+    });
+  }
+
+  function mula(d) {
+    DATA = d;
+    $('namaGuru').textContent = d.namaGuru || '';
+    $('maks').textContent = d.maksGambar;
+    isiPilihan($('kelas'), d.kelas.map(function (k) { return { value: k, label: k }; }), '— Pilih kelas —');
+    $('muat').hidden = true; $('borang').hidden = false;
+    var k = baca('kr_kelas');
+    if (k && d.kelas.indexOf(k) >= 0) { $('kelas').value = k; tukarKelas(); }
+  }
+
+  function tukarKelas() {
+    var k = $('kelas').value;
+    simpan('kr_kelas', k);
+    var murid = (DATA.murid[k] || []).map(function (n) { return { value: n, label: n }; });
+    isiPilihan($('nama'), murid, '— Pilih nama —');
+    $('nama').disabled = !k;
+    var n = baca('kr_nama');
+    if (n && (DATA.murid[k] || []).indexOf(n) >= 0) $('nama').value = n;
+
+    var tg = DATA.tugasan.filter(function (t) { return t.kelas.indexOf(k) >= 0; })
+      .map(function (t) { return { value: t.id, label: t.id + ' • ' + t.tajuk + (t.tarikhAkhir ? ' (akhir ' + t.tarikhAkhir + ')' : '') }; });
+    isiPilihan($('tugasan'), tg, tg.length ? '— Pilih tugasan —' : 'Tiada tugasan dibuka');
+    $('tugasan').disabled = !tg.length;
+    $('infoTugasan').hidden = true;
+  }
+
+  function tukarTugasan() {
+    var t = DATA.tugasan.filter(function (x) { return x.id === $('tugasan').value; })[0];
+    var box = $('infoTugasan');
+    if (!t) { box.hidden = true; return; }
+    box.textContent = (t.soalan || '') + '\n\nMarkah penuh: ' + t.penuh + (t.tarikhAkhir ? '   •   Tarikh akhir: ' + t.tarikhAkhir : '');
+    box.hidden = false;
+  }
+
+  $('kelas').addEventListener('change', tukarKelas);
+  $('nama').addEventListener('change', function () { simpan('kr_nama', $('nama').value); });
+  $('tugasan').addEventListener('change', tukarTugasan);
+
+  // Kecilkan gambar sebelum dihantar (jimat data & lebih laju)
+  function kecilkan(file) {
+    return new Promise(function (ok, gagal) {
+      var img = new Image(), url = URL.createObjectURL(file);
+      img.onload = function () {
+        var M = 1600, w = img.naturalWidth, h = img.naturalHeight, s = Math.min(1, M / Math.max(w, h));
+        w = Math.round(w * s); h = Math.round(h * s);
+        var c = document.createElement('canvas'); c.width = w; c.height = h;
+        var ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        ok(c.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); gagal(new Error('Gambar "' + file.name + '" tidak dapat dibaca. Cuba format JPG/PNG.')); };
+      img.src = url;
+    });
+  }
+
+  $('fail').addEventListener('change', function (e) {
+    var fail = Array.prototype.slice.call(e.target.files || []);
+    $('ralat').textContent = '';
+    var baki = DATA.maksGambar - GAMBAR.length;
+    if (fail.length > baki) { $('ralat').textContent = 'Maksimum ' + DATA.maksGambar + ' gambar sahaja.'; fail = fail.slice(0, Math.max(baki, 0)); }
+    Promise.all(fail.map(kecilkan)).then(function (senarai) {
+      GAMBAR = GAMBAR.concat(senarai); lukisPratonton();
+    }).catch(function (err) { $('ralat').textContent = err.message; });
+    e.target.value = '';
+  });
+
+  function lukisPratonton() {
+    var p = $('pratonton'); p.innerHTML = '';
+    GAMBAR.forEach(function (src, i) {
+      var d = document.createElement('div'); d.className = 'tb';
+      var im = document.createElement('img'); im.src = src; d.appendChild(im);
+      var s = document.createElement('span'); s.textContent = 'ms ' + (i + 1); d.appendChild(s);
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = '×';
+      b.onclick = function () { GAMBAR.splice(i, 1); lukisPratonton(); };
+      d.appendChild(b); p.appendChild(d);
+    });
+  }
+
+  $('borang').addEventListener('submit', function (e) {
+    e.preventDefault();
+    $('ralat').textContent = '';
+    if (!$('kelas').value || !$('nama').value || !$('tugasan').value) { $('ralat').textContent = 'Sila lengkapkan kelas, nama dan tugasan.'; return; }
+    if (!GAMBAR.length) { $('ralat').textContent = 'Sila ambil/pilih sekurang-kurangnya satu gambar.'; return; }
+    $('borang').hidden = true; $('proses').hidden = false;
+    panggil('hantar', { kelas: $('kelas').value, nama: $('nama').value, idTugasan: $('tugasan').value, gambar: GAMBAR })
+      .then(tunjukHasil)
+      .catch(function (err) {
+        $('proses').hidden = true; $('borang').hidden = false;
+        $('ralat').textContent = 'Gagal: ' + err.message;
+      });
+  });
+
+  function el(tag, cls, teks) { var x = document.createElement(tag); if (cls) x.className = cls; if (teks != null) x.textContent = teks; return x; }
+
+  function tunjukHasil(r) {
+    $('proses').hidden = true;
+    var h = $('hasil'); h.innerHTML = ''; h.hidden = false;
+    h.appendChild(el('h2', null, '✅ Kerja diterima'));
+    h.appendChild(el('span', 'lencana ' + (r.lewat ? 'lewat' : 'ok'), r.lewat ? 'Dihantar lewat' : 'Dihantar tepat masa'));
+    if (r.markah !== null && r.markah !== undefined) {
+      h.appendChild(el('div', 'besar', r.markah + ' / ' + r.penuh));
+      if (r.komen) { var k = el('div', 'komen'); k.appendChild(el('b', null, 'Komen: ')); k.appendChild(document.createTextNode(r.komen)); h.appendChild(k); }
+      h.appendChild(el('p', 'kecil', 'Markah ini disemak oleh AI dan boleh diubah oleh guru.'));
+    } else if (r.tunjuk) {
+      h.appendChild(el('p', null, 'Kerja anda akan disemak sebentar lagi. Guru akan semak markah.'));
+    } else {
+      h.appendChild(el('p', null, 'Terima kasih! Guru akan memaklumkan markah kemudian.'));
+    }
+    h.appendChild(el('p', 'kecil', 'No. rujukan: ' + r.idHantaran));
+    var b = el('button', 'utama', 'Hantar tugasan lain'); b.type = 'button';
+    b.onclick = function () { GAMBAR = []; lukisPratonton(); $('tugasan').value = ''; $('infoTugasan').hidden = true; h.hidden = true; $('borang').hidden = false; };
+    h.appendChild(b);
+  }
+</script>
+</body>
+</html>
